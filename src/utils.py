@@ -12,34 +12,42 @@ def main():
     db_name = 'headhunter_vacancies'
 
     data = get_data(EMPLOYERS)
-    create_database(params, db_name, data)
+    create_database(params, db_name)
     save_data_to_database(data, db_name, params)
 
 
 def get_data(employers_list: list):
     """Получает данные по работодателям с платформы 'hh.ru'"""
-    employers_data = []
+    vacancies_data = []
     for item in employers_list:
         # Делаем запрос на API HH
         hh = HeadHunterAPI(item)
         employers = hh.get_employers()
         # Выбираем первую кампанию из ответа
-        response = requests.get(employers[0]['vacancies_url']).json()
+        vacancies_response = requests.get(employers[0]['vacancies_url']).json()
+        employers_response = requests.get(employers[0]['url']).json()
 
         # Если есть кампания с точным совпадением названия выбераем ее
         for employer in employers:
             if employer['name'].lower() == item.lower():
-                response = requests.get(employer['vacancies_url']).json()
+                vacancies_response = requests.get(employer['vacancies_url']).json()
+                employers_response = requests.get(employer['url']).json()
                 break
         # Сохраняем данные в список
-        employers_data.append({
-            'employer': item,
-            'vacancies': response['items']
+        vacancies_data.append({
+            'employer': {
+                'id': employers_response['id'],
+                'name': employers_response['name'],
+                'open_vacancies': employers_response['open_vacancies'],
+                'url': employers_response['alternate_url'],
+                'site_url': employers_response['site_url']
+            },
+            'vacancies': vacancies_response['items']
         })
-    return employers_data
+    return vacancies_data
 
 
-def create_database(params: dict, db_name: str, employers: list[dict]) -> None:
+def create_database(params: dict, db_name: str) -> None:
     """Создает новую базу данных."""
     try:
         conn = psycopg2.connect(database='postgres', **params)
@@ -66,23 +74,32 @@ def create_database(params: dict, db_name: str, employers: list[dict]) -> None:
     try:
         with connect as conn:
             with conn.cursor() as cur:
-                for employer in employers:
-                    try:
-                        table_name = 't_' + employer["employer"]
-                        cur.execute(
-                            f'CREATE TABLE {table_name} ('
-                            'vacancy_id int PRIMARY KEY, '
-                            'vacancy_name varchar(100), '
-                            'city varchar(50), '
-                            'salary_from int, '
-                            'salary_to int, '
-                            'salary_currency char(3), '
-                            'requirements text, '
-                            'url varchar(100)'
-                            ')'
-                        )
-                    except psycopg2.errors.Error as e:
-                        raise e
+                try:
+                    cur.execute(
+                        'CREATE TABLE employers ('
+                        'employer_id int PRIMARY KEY, '
+                        'employer_name varchar(100), '
+                        'open_vacancies int, '
+                        'url varchar(100), '
+                        'site_url varchar(100)'
+                        ')'
+                    )
+                    cur.execute(
+                        'CREATE TABLE vacancies ('
+                        'vacancy_id int PRIMARY KEY, '
+                        'vacancy_name varchar(100), '
+                        'city varchar(50), '
+                        'salary_from int, '
+                        'salary_to int, '
+                        'salary_currency char(3), '
+                        'requirements text, '
+                        'url varchar(100), '
+                        'employer_id int NOT NULL,'
+                        'FOREIGN KEY (employer_id) REFERENCES employers(employer_id)'
+                        ')'
+                    )
+                except psycopg2.errors.Error as e:
+                    raise e
     finally:
         conn.close()
 
@@ -94,6 +111,22 @@ def save_data_to_database(data: list[dict], db_name: str, params: dict):
         with connect as conn:
             with conn.cursor() as cur:
                 for employer in data:
+                    # Заполняем таблицу employers
+                    employer_id = employer['employer']['id']
+                    employer_name = employer['employer']['name']
+                    open_vacancies = employer['employer']['open_vacancies']
+                    employer_url = employer['employer']['url']
+                    site_url = employer['employer']['site_url']
+                    try:
+                        cur.execute(
+                            f'INSERT INTO employers '
+                            f'VALUES (%s, %s, %s, %s, %s)',
+                            (employer_id, employer_name, open_vacancies, employer_url, site_url)
+                        )
+                    except psycopg2.errors.Error as e:
+                        print(e)
+                        continue
+                    # Заполняем таблицу vacancies
                     for vacancy in employer['vacancies']:
                         try:
                             vacancy_id = vacancy['id']
@@ -115,12 +148,11 @@ def save_data_to_database(data: list[dict], db_name: str, params: dict):
                             requirements = vacancy['snippet']['requirement']
                             url = vacancy['alternate_url']
                         try:
-                            table_name = 't_' + employer["employer"]
                             cur.execute(
-                                f'INSERT INTO {table_name} '
-                                f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s)',
+                                f'INSERT INTO vacancies '
+                                f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)',
                                 (vacancy_id, vacancy_name, city, salary_from, salary_to,
-                                 salary_currency, requirements, url)
+                                 salary_currency, requirements, url, employer_id)
                             )
                         except psycopg2.errors.Error as e:
                             print(e)
