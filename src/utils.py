@@ -55,7 +55,7 @@ def create_database(params: dict, db_name: str, employers: list[dict]) -> None:
         cur.close()
         conn.close()
     except psycopg2.errors.InvalidCatalogName:
-        # Если базы данных с таким имене не существует
+        # Если базы данных с таким именем не существует
         cur.execute("CREATE DATABASE " + db_name)
         cur.close()
         conn.close()
