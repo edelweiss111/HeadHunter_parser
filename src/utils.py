@@ -20,14 +20,18 @@ def get_data(employers_list: list):
     """Получает данные по работодателям с платформы 'hh.ru'"""
     employers_data = []
     for item in employers_list:
-
+        # Делаем запрос на API HH
         hh = HeadHunterAPI(item)
         employers = hh.get_employers()
+        # Выбираем первую кампанию из ответа
+        response = requests.get(employers[0]['vacancies_url']).json()
 
+        # Если есть кампания с точным совпадением названия выбераем ее
         for employer in employers:
             if employer['name'].lower() == item.lower():
                 response = requests.get(employer['vacancies_url']).json()
-
+                break
+        # Сохраняем данные в список
         employers_data.append({
             'employer': item,
             'vacancies': response['items']
@@ -41,16 +45,22 @@ def create_database(params: dict, db_name: str, employers: list[dict]) -> None:
         conn = psycopg2.connect(database='postgres', **params)
         conn.autocommit = True
         cur = conn.cursor()
+        # Удаляем существующие подключения к базе
+        cur.execute(f"SELECT pg_terminate_backend(pg_stat_activity.pid) "
+                    f"FROM pg_stat_activity "
+                    f"WHERE pg_stat_activity.datname = '{db_name}' "
+                    f"AND pid <> pg_backend_pid()")
         cur.execute("DROP DATABASE " + db_name)
         cur.execute("CREATE DATABASE " + db_name)
         cur.close()
         conn.close()
     except psycopg2.errors.InvalidCatalogName:
+        # Если базы данных с таким имене не существует
         cur.execute("CREATE DATABASE " + db_name)
         cur.close()
         conn.close()
-    except psycopg2.errors.SyntaxError as e:
-        print(e)
+    except psycopg2.errors.Error as e:
+        raise e
 
     connect = psycopg2.connect(database=db_name, **params)
     try:
@@ -71,8 +81,8 @@ def create_database(params: dict, db_name: str, employers: list[dict]) -> None:
                             'url varchar(100)'
                             ')'
                         )
-                    except psycopg2.errors.SyntaxError as e:
-                        print(e)
+                    except psycopg2.errors.Error as e:
+                        raise e
     finally:
         conn.close()
 
@@ -95,7 +105,15 @@ def save_data_to_database(data: list[dict], db_name: str, params: dict):
                             requirements = vacancy['snippet']['requirement']
                             url = vacancy['alternate_url']
                         except TypeError:
-                            continue
+                            # Поле salary может быть пустым
+                            vacancy_id = vacancy['id']
+                            vacancy_name = vacancy['name']
+                            city = vacancy['area']['name']
+                            salary_from = None
+                            salary_to = None
+                            salary_currency = None
+                            requirements = vacancy['snippet']['requirement']
+                            url = vacancy['alternate_url']
                         try:
                             table_name = 't_' + employer["employer"]
                             cur.execute(
@@ -104,7 +122,7 @@ def save_data_to_database(data: list[dict], db_name: str, params: dict):
                                 (vacancy_id, vacancy_name, city, salary_from, salary_to,
                                  salary_currency, requirements, url)
                             )
-                        except psycopg2.errors.SyntaxError as e:
+                        except psycopg2.errors.Error as e:
                             print(e)
                             continue
     finally:
