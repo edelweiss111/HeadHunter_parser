@@ -1,13 +1,15 @@
 import psycopg2
-from src.classes import HeadHunterAPI
+from src.classes import HeadHunterAPI, DBManager
 import requests
 from src.config import config
+from pprint import pprint
 
 EMPLOYERS = ['Яндекс', 'Сбер', 'Ростелеком', 'Касперский', 'Ростех',
              'Айтеко', '1С', 'OCS', 'МОНТ', 'Газпром']
 
 
 def main():
+    """Основной код программы"""
     params = config()
     db_name = 'headhunter_vacancies'
 
@@ -15,9 +17,40 @@ def main():
     create_database(params, db_name)
     save_data_to_database(data, db_name, params)
 
+    database = DBManager(db_name, params)
+
+    # Взаимодействие с базой данных
+    while True:
+        try:
+            user_input = int(input('Выберите следующее дейтсвие:\n'
+                                   '1 - Получить список всех кампаний\n'
+                                   '2 - Получить список всех вакансий\n'
+                                   '3 - Получить среднюю з/п по вакансиям\n'
+                                   '4 - Получить список вакансий с з/п выше средней\n'
+                                   '5 - Найти вакансии по ключевому слову\n'
+                                   '6 - Выйти\n'))
+            if user_input == 1:
+                pprint(database.get_companies_and_vacancies_count())
+            elif user_input == 2:
+                pprint(database.get_all_vacancies())
+            elif user_input == 3:
+                pprint(database.get_avg_salary())
+            elif user_input == 4:
+                pprint(database.get_vacancies_with_higher_salary())
+            elif user_input == 5:
+                keyword = input('Введите ключевое слово\n')
+                pprint(database.get_vacancies_with_keyword(keyword))
+            elif user_input == 6:
+                break
+            else:
+                print('Неизвестная команда попробуйте снова')
+        except ValueError:
+            print('Нужно ввести число!!!')
+            continue
+
 
 def get_data(employers_list: list):
-    """Получает данные по работодателям с платформы 'hh.ru'"""
+    """Получает данные по работодателям и их вакансиям с платформы 'hh.ru'"""
     vacancies_data = []
     for item in employers_list:
         # Делаем запрос на API HH
