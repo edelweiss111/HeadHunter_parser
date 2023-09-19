@@ -30,16 +30,21 @@ def main():
                                    '5 - Найти вакансии по ключевому слову\n'
                                    '6 - Выйти\n'))
             if user_input == 1:
-                pprint(database.get_companies_and_vacancies_count())
+                response = database.get_companies_and_vacancies_count()
+                pprint(response)
             elif user_input == 2:
-                pprint(database.get_all_vacancies())
+                response = database.get_all_vacancies()
+                pprint(response)
             elif user_input == 3:
-                pprint(database.get_avg_salary())
+                response = database.get_avg_salary()
+                pprint(response)
             elif user_input == 4:
-                pprint(database.get_vacancies_with_higher_salary())
+                response = database.get_vacancies_with_higher_salary()
+                pprint(response)
             elif user_input == 5:
                 keyword = input('Введите ключевое слово\n')
-                pprint(database.get_vacancies_with_keyword(keyword))
+                response = database.get_vacancies_with_keyword(keyword)
+                pprint(response)
             elif user_input == 6:
                 break
             else:
